@@ -1,6 +1,8 @@
 # import library
+import datetime
 import math
 import re
+import logging
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -18,8 +20,8 @@ field_names = ['patent_name', 'patent_ID', 'claim1', 'cpc number', 'claim1_featu
 class CrawlerInfo:
     def __init__(self):
         self.patent_name = list()
-        self.patent_id = list()
-        self.claim1 = list()
+        self.abstract = list()
+        self.claim = list()
         self.cpc_number = list()
         self.claim1_feature_vector = list()
         self.cluster = list()
@@ -62,16 +64,23 @@ def parse_search_page(url: str, data_container: CrawlerInfo):
 
     # append each patent data to CrawlerInfo instance
     data_container.patent_name.append(title)
-    data_container.patent_id.append(num)
-    data_container.claim1.append(claim)
+    data_container.abstract.append(abstract)
+    data_container.claim.append(claim)
     data_container.cpc_number.append(international_class)
 
     # print result
-    print(f"title: {title}\nnumber: {num}\ncpc number: {international_class}\nclaim: {claim}")
+    print(f"title: {title}\nabstract: {abstract}\ncpc number: {international_class}\nclaim: {claim}\n")
+    logging.info(f"title: {title}\nabstract: {abstract}\ncpc number: {international_class}\nclaim: {claim}")
     return data_container
 
 
 def main():
+    logging.basicConfig(
+        filename=f'patent_crawler_{datetime.datetime.now().strftime("%y%m%d%h%m")}',
+        format='%(asctime)s %(message)s',
+        encoding='utf-8',
+        level=logging.DEBUG
+    )
     page = 1
     url = 'https://patft.uspto.gov/netacgi/nph-Parser?Sect1=PTO2&Sect2=HITOFF&p='+str(page)+'&u=%2Fnetahtml%2FPTO%2Fsearch-adv.htm&r=0&f=S&l=50&d=PTXT&Query='+term
     html = requests.get(url, headers=headers)
@@ -79,53 +88,55 @@ def main():
     soup = BeautifulSoup(html.text, 'html.parser')
     total = int(soup.find_all('strong')[2].string)
     total_page = math.ceil(total / 50)
-    print(total_page)
+    print(f'Total page number: {total_page} pages\n')
+    print(f'------------------------------------------')
 
-    # create instance for recording patent information
-    c_info = CrawlerInfo()
-
+    list_df = list()
     for page in range(1, total_page):
+        logging.info(f'Start parsing current page: {page}')
+        print(f'Current page: {page}\n')
+
+        # create instance for recording patent information
+        c_info = CrawlerInfo()
+
         url = 'https://patft.uspto.gov/netacgi/nph-Parser?Sect1=PTO2&Sect2=HITOFF&p='+str(page)+'&u=%2Fnetahtml%2FPTO%2Fsearch-adv.htm&r=0&f=S&l=50&d=PTXT&Query='+term
         html = requests.get(url, headers=headers)
         soup = BeautifulSoup(html.text, 'html.parser')
         table = soup.find_all('table')[1]
         links = table.find_all(href=re.compile("/netacgi/nph-Parser\?Sect1=PTO2&Sect2="))
-        i = 0
-        add = []
-        print('page:' + str(page))
+        number = 0
         for row in links:
-            i += 1
-            if i % 2 == 0:
-                add.append(row.attrs.get('href'))
-                print('row: ' + str(row.attrs.get('href')))
+            number += 1
+            if number % 2 == 0:
                 prefix_string = str(row.attrs.get('href'))
-                c_info = parse_search_page(prefix_string, c_info)
+                logging.info(f'Parsing (page, number): ({page}, {number})')
+                try:
+                    c_info = parse_search_page(prefix_string, c_info)
+                except:
+                    pass
+                finally:
+                    logging.info(f'*** Exception: Parsing Error at page: {page}, number: {number} ***')
 
-        # if page == 3:
-            # create dataframe
-            df = pd.DataFrame()
-            df[field_names[0]] = c_info.patent_name
-            df[field_names[1]] = c_info.patent_id
-            df[field_names[2]] = c_info.claim1
-            df[field_names[3]] = c_info.cpc_number
-            df[field_names[4]] = pd.Series(np.nan, dtype=float)  # just create an empty column
-            df[field_names[5]] = pd.Series(np.nan, dtype=float)
+                # create dataframe
+                df = pd.DataFrame()
+                df[field_names[0]] = c_info.patent_name
+                df[field_names[1]] = c_info.abstract
+                df[field_names[2]] = c_info.claim
+                df[field_names[3]] = c_info.cpc_number
+                df[field_names[4]] = pd.Series(np.nan, dtype=float)  # just create an empty column
+                df[field_names[5]] = pd.Series(np.nan, dtype=float)
+                list_df.append(df)
 
-            # write to file
-            df.to_csv('patent_info.csv', index=False)
+                # write to file
+                df.to_csv(f'patent_info_{page}.csv', index=False)
+                logging.info(f'Output csv file: patent_info_{page}.csv')
+        print(f'------------------------------------------')
 
-
-    # create dataframe
-    df = pd.DataFrame()
-    df[field_names[0]] = c_info.patent_name
-    df[field_names[1]] = c_info.patent_id
-    df[field_names[2]] = c_info.claim1
-    df[field_names[3]] = c_info.cpc_number
-    df[field_names[4]] = pd.Series(np.nan, dtype=float)  # just create an empty column
-    df[field_names[5]] = pd.Series(np.nan, dtype=float)
+    # merge all dataframe
+    merged_df = pd.concat(list_df, axis=0)
 
     # write to file
-    df.to_csv('patent_info.csv', index=False)
+    merged_df.to_csv('patent_info.csv', index=False)
 
 
 if __name__ == "__main__":
