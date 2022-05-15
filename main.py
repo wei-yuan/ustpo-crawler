@@ -30,9 +30,15 @@ def parse_search_page(url: str, data_container: CrawlerInfo):
     html = requests.get(prefix+url, headers=headers)
     soup = BeautifulSoup(html.text, 'html.parser')
 
+    title_image = False
+    if html.text.find('**Please see images for:') > 0: title_image = True
+
     num = soup.find_all('table')[2].find_all('b')[1].string.strip()
     date = soup.find_all('table')[2].find_all('b')[3].string.strip()
-    title = soup.find_all('font')[3].get_text().replace('\n', '').replace('  ', '')
+    
+    title_offset = 6 if title_image else 3
+    title = soup.find_all('font')[title_offset].get_text().replace('\n', '').replace('  ', '')
+
     abstract = soup.find_all('p')[0].get_text(strip=True).replace('\n', '').replace('  ', '')
 
     target = soup.find_all('p')[1]
@@ -45,7 +51,12 @@ def parse_search_page(url: str, data_container: CrawlerInfo):
         features='html.parser'
     ).get_text().replace('\n', ' ')
 
-    international_class = soup.find_all('table')[7].find_all('td')[3].get_text().replace('\xa0', ' ')
+    international_class_offset = 5
+    if title_image: international_class_offset += 1
+    if html.text.find('Prior Publication Data') > 0: international_class_offset += 1
+    if html.text.find('Foreign Application Priority Data') > 0: international_class_offset += 1
+    if html.text.find('Related U.S. Patent Documents') > 0: international_class_offset += 1
+    international_class = soup.find_all('table')[international_class_offset].find_all('td')[3].get_text().replace('\xa0', ' ')
     filed_date = soup.find_all('td', align='left', width='90%')[-1].get_text().replace('\n', '')
     assignee = soup.find_all('td', align='left', width='90%')[2].get_text().replace('\n', '')
 
@@ -90,7 +101,7 @@ def main():
                 prefix_string = str(row.attrs.get('href'))
                 c_info = parse_search_page(prefix_string, c_info)
 
-        if page == 3:
+        # if page == 3:
             # create dataframe
             df = pd.DataFrame()
             df[field_names[0]] = c_info.patent_name
@@ -101,7 +112,7 @@ def main():
             df[field_names[5]] = pd.Series(np.nan, dtype=float)
 
             # write to file
-            df.to_csv('patent_info_54.csv', index=False)
+            df.to_csv('patent_info.csv', index=False)
 
 
     # create dataframe
