@@ -53,8 +53,10 @@ def parse_search_page(url: str, data_container: CrawlerInfo):
         features='html.parser'
     ).get_text().replace('\n', ' ')
 
-    international_class_offset = 5
+    international_class_offset = 4
+    
     if title_image: international_class_offset += 1
+    if html.text.find('Applicant:') > 0: international_class_offset += 1
     if html.text.find('Prior Publication Data') > 0: international_class_offset += 1
     if html.text.find('Foreign Application Priority Data') > 0: international_class_offset += 1
     if html.text.find('Related U.S. Patent Documents') > 0: international_class_offset += 1
